@@ -1,6 +1,6 @@
 #!/bin/bash
 
-IMAGENAME="autocamst"
+IMAGENAME="ivaccari/itchefweb-bot:1.0.0"
 
 rm -rf dist
 npm run build

@@ -220,7 +220,7 @@ bot.on("message", (msg) => {
     const user: User | undefined = database.find<User>(Database.TABLES.USERS, { chatId: chatId })?.[0];
     if (!user) {
         console.log(`Utente non registrato con chatId ${chatId}.`);
-        bot.sendMessage(chatId, `Utente non registrato. Per registrarti, invia il comando '${commmands.REGISTER.example}'`);
+        bot.sendMessage(chatId, `Utente non registrato. Per registrarti, invia il comando '${commmands.REGISTER.example}'. Le credenziali da utilizzare sono quelle dell'app ItChefWeb`);
         return;
     }
 

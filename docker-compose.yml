@@ -1,7 +1,7 @@
 services:
-  autocamst:
-    image: autocamst
-    container_name: autocamst
+  itchefwebbot:
+    image: ivaccari/itchefweb-bot:latest
+    container_name: itchefweb-bot
     volumes:
       - ./database/:/app/database/
     ports:
