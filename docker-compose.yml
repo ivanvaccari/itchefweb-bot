@@ -1,0 +1,10 @@
+services:
+  autocamst:
+    image: autocamst
+    container_name: autocamst
+    volumes:
+      - ./database/:/app/database/
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env

@@ -1,0 +1,29 @@
+{
+  "name": "itchefweb-bot",
+  "version": "1.0.0",
+  "description": "",
+  "license": "ISC",
+  "author": "",
+  "type": "module",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build": "tsc",
+    "start": "tsc-watch -b ./tsconfig.json --onSuccess \"node dist/index.js\""
+  },
+  "dependencies": {
+    "axios": "^1.18.0",
+    "axios-cookiejar-support": "^7.0.0",
+    "dotenv": "^17.4.2",
+    "luxon": "^3.7.2",
+    "node-cron": "^4.4.1",
+    "node-telegram-bot-api": "^1.1.0",
+    "parse5": "^8.0.1",
+    "tough-cookie": "^6.0.1",
+    "tsc-watch": "^7.2.0",
+    "typescript": "^6.0.3"
+  },
+  "devDependencies": {
+    "@types/luxon": "^3.7.2",
+    "@types/node": "^24.13.2"
+  }
+}
