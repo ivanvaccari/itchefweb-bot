@@ -182,7 +182,7 @@ function generateReservationMessage(reservationResult: {
     }
 
     if (reservationResult.found) {
-        return `Prenotazione trovata per la data ${reservationResult.date}:\n${reservationResult.data}`;
+        return `Prenotazione trovata per la data ${reservationResult.date}:\n${reservationResult.message}`;
     } else {
         if (reservationResult.isReservationPossible) {
             return `Nessuna prenotazione trovata per la data ${reservationResult.date}. È possibile effettuare una prenotazione.`;
