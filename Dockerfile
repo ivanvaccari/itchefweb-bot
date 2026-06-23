@@ -9,4 +9,6 @@ EXPOSE 3000
 
 RUN npm install --omit=dev
 
+ENV TZ=Europe/Rome
+
 CMD ["node", "dist/index.js"]

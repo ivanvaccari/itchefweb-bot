@@ -28,10 +28,10 @@ const commmands = {
 /** Bot di telegram */
 const bot = new TelegramBot(environment.telegramBotToken, {
     polling: {
-        interval: 10000,
+        interval: 2000,
         autoStart: true,
         params: {
-            timeout: 20, // Timeout in seconds for long polling
+            timeout: 30, // Timeout in seconds for long polling
         },
     },
 });
