@@ -18,10 +18,21 @@ const httpClientsCache: { [key: number]: { expiresAt: Date; client: HttpClient }
 const commmands = {
     START: { command: "/start", description: "Avvia il bot e mostra le istruzioni", example: "" },
     REGISTER: { command: "/registra", description: "Registrati al bot.", example: "/registra USERNAME PASSWORD" },
+    CHECK_PRENOTAZIONE_OGGI: {
+        command: "/prenotazione_oggi",
+        description: "Controlla la prenotazione per oggi",
+        example: "",
+    },
+    CHECK_PRENOTAZIONE_DOMANI: {
+        command: "/prenotazione_domani",
+        description: "Controlla la prenotazione per il prossimo giorno lavorativo (domani, saltando i weekend)",
+        example: "",
+    },
     CHECK_PRENOTAZIONE: {
         command: "/prenotazione",
-        description: "Controlla la prenotazione per oggi, domani o un giorno specifico.",
-        example: "/prenotazione oggi, /prenotazione domani, /prenotazione 3",
+        description: "Controlla la prenotazione per un giorno specifico da oggi.",
+        example:
+            "/prenotazione N, dove N è il numero di giorni da oggi. '/prenotazione 0' controlla per oggi, '/prenotazione 1' controlla per domani, '/prenotazione 2' controlla per dopodomani, e così via.",
     },
 };
 
@@ -36,69 +47,100 @@ const bot = new TelegramBot(environment.telegramBotToken, {
     },
 });
 
+bot.setMyCommands(
+    Object.values(commmands).map((cmd) => ({
+        command: cmd.command,
+        description: cmd.description,
+    })),
+);
+
 /**
  * Ogni giorno controlla che ci sia la prenotazione per il giorno stesso (possibile fino entro le 09:30)
  */
-cron.schedule(environment.cronToday, () => {
-    let today = DateTime.local();
-
-    if (today.weekday === 6 || today.weekday === 7) {
-        return; // Se è sabato o domenica, non rompere le balle alla gente
-    }
-
-    async function _iter() {
-        const users = database.find<User>(Database.TABLES.USERS);
-        for (const user of users || []) {
-            console.log(`Controllo prenotazione per utente ${user.username} per oggi`);
-            const reservationResult = await checkReservation(user, "oggi");
-            if (!reservationResult.found) {
-                console.log(`Nessuna prenotazione trovata per utente ${user.username} per oggi. Invia messaggio.`);
-                const message = generateReservationMessage(reservationResult);
-                bot.sendMessage(user.chatId, message);
-            } else {
-                console.log(`Prenotazione trovata per utente ${user.username} per oggi. Nessun messaggio inviato.`);
-            }
-
-            await new Promise((resolve) => setTimeout(resolve, 10000)); // Attende 10 secondi tra le richieste per evitare di sovraccaricare il server
+cron.schedule(
+    environment.cronToday,
+    () => {
+        let today = DateTime.local();
+        if (today.weekday === 6 || today.weekday === 7) {
+            return; // Se è sabato o domenica, non rompere le balle alla gente
         }
-    }
-    _iter();
-});
+
+        async function _iter() {
+            const users = database.find<User>(Database.TABLES.USERS);
+            for (const user of users || []) {
+                console.log(`Controllo prenotazione per utente ${user.username} per oggi`);
+                const reservationResult = await checkReservation(user, 0);
+                if (!reservationResult.found) {
+                    console.log(`Nessuna prenotazione trovata per utente ${user.username} per oggi. Invia messaggio.`);
+                    const message = generateReservationMessage(reservationResult);
+                    bot.sendMessage(user.chatId, message);
+                } else {
+                    console.log(`Prenotazione trovata per utente ${user.username} per oggi. Nessun messaggio inviato.`);
+                }
+
+                await new Promise((resolve) => setTimeout(resolve, 10000)); // Attende 10 secondi tra le richieste per evitare di sovraccaricare il server
+            }
+        }
+        _iter();
+    },
+    { timezone: "Europe/Rome" },
+);
 
 /**
- * Ogni giorno controlla che ci sia la prenotazione per il giorno successivo (possibile fino entro le 13:30)
+ * Ritorna il numero di giorni da oggi al prossimo giorno lavorativo, saltando i weekend.
+ * @returns
  */
-cron.schedule(environment.cronTomorrow, () => {
-    
+function nextWorkingDayDiff() {
     // predi il giorno lavorativo successivo, saltando i weekend
     let plusDays = 1;
     let today = DateTime.local();
 
-    if (today.weekday === 6 || today.weekday === 7) {
-        return; // Se è sabato o domenica, non rompere le balle alla gente
+    if (today.weekday === 6) {
+        return 2; // Se è sabato, controlla per lunedì (2 giorni dopo)
     }
     if (today.weekday === 5) {
         plusDays = 3; // Se è venerdì, controlla per lunedì (3 giorni dopo)
     }
 
-    async function _iter() {
-        const users = database.find<User>(Database.TABLES.USERS);
+    return plusDays;
+}
+/**
+ * Ogni giorno controlla che ci sia la prenotazione per il giorno successivo (possibile fino entro le 13:30)
+ */
+cron.schedule(
+    environment.cronTomorrow,
+    () => {
+        console.log("Controllo prenotazione automatica per il giorno lavorativo successivo");
+        // predi il giorno lavorativo successivo, saltando i weekend
 
-        for (const user of users || []) {
-            const reservationResult = await checkReservation(user, `${plusDays}`);
-            if (!reservationResult.found) {
-                console.log(`Nessuna prenotazione trovata per utente ${user.username} per ${plusDays} giorni dopo oggi. Invia messaggio.`);
-                const message = generateReservationMessage(reservationResult);
-                bot.sendMessage(user.chatId, message);
-            } else {
-                console.log(`Prenotazione trovata per utente ${user.username} per ${plusDays} giorni dopo oggi. Nessun messaggio inviato.`);
-            }
-
-            await new Promise((resolve) => setTimeout(resolve, 10000)); // Attende 10 secondi tra le richieste per evitare di sovraccaricare il server
+        let today = DateTime.local();
+        if (today.weekday === 6 || today.weekday === 7) {
+            return; // Se è sabato o domenica, non rompere le balle alla gente
         }
-    }
-    _iter();
-});
+
+        let plusDays = nextWorkingDayDiff();
+
+        console.log(`Controllo prenotazione automatica per ${plusDays} giorni dopo oggi`);
+        async function _iter() {
+            const users = database.find<User>(Database.TABLES.USERS);
+            console.log(`Trovati ${users?.length || 0} utenti registrati. Inizio controllo prenotazioni.`);
+            for (const user of users || []) {
+                const reservationResult = await checkReservation(user, plusDays);
+                if (!reservationResult.found) {
+                    console.log(`Nessuna prenotazione trovata per utente ${user.username} per ${plusDays} giorni dopo oggi. Invia messaggio.`);
+                    const message = generateReservationMessage(reservationResult);
+                    bot.sendMessage(user.chatId, message);
+                } else {
+                    console.log(`Prenotazione trovata per utente ${user.username} per ${plusDays} giorni dopo oggi. Nessun messaggio inviato.`);
+                }
+
+                await new Promise((resolve) => setTimeout(resolve, 10000)); // Attende 10 secondi tra le richieste per evitare di sovraccaricare il server
+            }
+        }
+        _iter();
+    },
+    { timezone: "Europe/Rome" },
+);
 
 /**
  * Restituisce un HttpClient per un dato chatId, riutilizzando quello in cache se ancora valido, altrimenti ne crea uno nuovo.
@@ -116,7 +158,7 @@ function getHttpClientForChatId(id: number): HttpClient {
     const newClient = new HttpClient();
     httpClientsCache[id] = {
         client: newClient,
-        expiresAt: new Date(Date.now() + 10 * 60 * 1000), // Cache expires in 1 hour
+        expiresAt: new Date(Date.now() + 10 * 60 * 1000), // Cache expires in 10 minutes
     };
     return newClient;
 }
@@ -130,24 +172,10 @@ function getHttpClientForChatId(id: number): HttpClient {
  */
 async function checkReservation(
     user: User,
-    param: string,
+    param: number,
 ): Promise<{ found: boolean; data: any; isReservationPossible?: boolean; message: string; date: string; error?: boolean }> {
-    let date = null;
-    if (param === "oggi") {
-        date = new Date();
-    } else if (param === "domani") {
-        date = new Date();
-        date.setDate(date.getDate() + 1);
-    } else {
-        const day = parseInt(param, 10);
-        if (!isNaN(day)) {
-            date = new Date();
-            date.setDate(date.getDate() + day);
-        }
-    }
-    if (!date) {
-        return { found: false, error: true, message: `Formato del comando non valido. Usa: ${commmands.CHECK_PRENOTAZIONE.example}`, date: "", data: "" };
-    }
+    const date = new Date();
+    date.setDate(date.getDate() + param);
 
     const italianDateString = DateTime.fromJSDate(date).setLocale("it").toLocaleString(DateTime.DATE_FULL);
     try {
@@ -177,17 +205,28 @@ function generateReservationMessage(reservationResult: {
     date: string;
     error?: boolean;
 }): string {
+    const today = DateTime.fromJSDate(new Date()).setLocale("it").toLocaleString(DateTime.DATE_FULL);
+    const tomorrow = DateTime.fromJSDate(new Date()).plus({ days: 1 }).setLocale("it").toLocaleString(DateTime.DATE_FULL);
+    let dd = "";
+    if (reservationResult.date === today) {
+        dd = "oggi";
+    } else if (reservationResult.date === tomorrow) {
+        dd = "domani";
+    } else {
+        dd = "la data " + reservationResult.date;
+    }
+
     if (reservationResult.error) {
-        return "Errore nel controllo della prenotazione per la data " + reservationResult.date + ": " + reservationResult.message;
+        return "Errore nel controllo della prenotazione per " + dd + ": " + reservationResult.message;
     }
 
     if (reservationResult.found) {
-        return `Prenotazione trovata per la data ${reservationResult.date}:\n${reservationResult.message}`;
+        return `Prenotazione trovata per ${dd}:\n${reservationResult.message}`;
     } else {
         if (reservationResult.isReservationPossible) {
-            return `Nessuna prenotazione trovata per la data ${reservationResult.date}. È possibile effettuare una prenotazione.`;
+            return `Nessuna prenotazione trovata per ${dd}. È ancora possibile effettuare una prenotazione.`;
         } else {
-            return `Nessuna prenotazione trovata per la data ${reservationResult.date}. Non è possibile effettuare una prenotazione.`;
+            return `Nessuna prenotazione trovata per ${dd}. Non è più possibile effettuare una prenotazione.`;
         }
     }
 }
@@ -220,7 +259,10 @@ bot.on("message", (msg) => {
     const user: User | undefined = database.find<User>(Database.TABLES.USERS, { chatId: chatId })?.[0];
     if (!user) {
         console.log(`Utente non registrato con chatId ${chatId}.`);
-        bot.sendMessage(chatId, `Utente non registrato. Per registrarti, invia il comando '${commmands.REGISTER.example}'. Le credenziali da utilizzare sono quelle dell'app ItChefWeb`);
+        bot.sendMessage(
+            chatId,
+            `Utente non registrato. Per registrarti, invia il comando '${commmands.REGISTER.example}'. Le credenziali da utilizzare sono quelle dell'app ItChefWeb`,
+        );
         return;
     }
 
@@ -235,9 +277,21 @@ bot.on("message", (msg) => {
     }
 
     // Gestisce il comando di controllo prenotazione
-    if (text.startsWith(commmands.CHECK_PRENOTAZIONE.command)) {
-        const parts = text.split(" ");
-        let dateParam = parts[1] ?? "oggi";
+    const isPrenotazioneOggiCommand = text === commmands.CHECK_PRENOTAZIONE_OGGI.command;
+    const isPrenotazioneDomaniCommand = text === commmands.CHECK_PRENOTAZIONE_DOMANI.command;
+    const isPrenotazioneCommand = text.startsWith(commmands.CHECK_PRENOTAZIONE.command+' ');
+    if (isPrenotazioneOggiCommand || isPrenotazioneDomaniCommand || isPrenotazioneCommand) {
+        let dateParam = 0;
+        if (isPrenotazioneDomaniCommand) {
+            dateParam = nextWorkingDayDiff();
+        } else if (isPrenotazioneCommand) {
+            const parts = text.split(" ");
+            dateParam = parseInt(parts[1] ?? "", 10);
+            if (isNaN(dateParam)) {
+                bot.sendMessage(chatId, `Formato del comando non valido. Usa: ${commmands.CHECK_PRENOTAZIONE.example}`);
+                return;
+            }
+        }
 
         console.log(`Controllo prenotazione per utente ${user.username} con parametro: ${dateParam}`);
 
@@ -265,19 +319,4 @@ bot.on("message", (msg) => {
     bot.sendMessage(chatId, `Comando non riconosciuto. Invia ${commmands.START.command} per vedere la lista dei comandi disponibili.`);
 });
 
-/*
-async function main(){
-    const httpClient = new HttpClient();
-    await httpClient.login(environment.camstEmail, environment.camstPassword);
-
-    const date = new Date("2026-06-23");
-    console.log(await httpClient.getReservation(date));
-}
-
-
-
-main()
-.catch((err) => {
-    console.error("Errore durante l'esecuzione del programma:", err);
-    process.exit(1);
-});*/
+console.log("Bot avviato e in ascolto dei messaggi.");

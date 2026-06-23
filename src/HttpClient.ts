@@ -25,6 +25,7 @@ export class HttpClient {
             }),
         );
     }
+    
     /**
      * Esegue il login. Per qualsiasi problema, lancia un eccezione,
      * altrimento ritorna senza errori.
