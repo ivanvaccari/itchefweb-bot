@@ -2,7 +2,7 @@
 
 App NodeJS per monitorare le prenotazioni dei pasti tramite il portale ITChefWeb di CAMST e notificare l'utente via telegram se non è stata effettuata la prenotazione.
 
-## Configuraizione
+## Configurazione
 
 L'app è configurabile tramite le seguenti variabili d'ambiente:
 
