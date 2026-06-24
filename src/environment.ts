@@ -14,7 +14,7 @@ export const environment = {
     /**
      * Il cron che gira alle 12:30 (del TZ=Europe/ROME) verifica le prenotazioni per domani
      */
-    cronTomorrow: process.env.CRON_TOMORROW || "01 21 * * *", 
+    cronTomorrow: process.env.CRON_TOMORROW || "30 12 * * *", 
 
     /**
      * URl base dell'applicazione Camst, ad esempio: https://itchefwebcl.camst.it/XXXXXX/ITChefWebApp
