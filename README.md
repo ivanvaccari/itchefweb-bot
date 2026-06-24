@@ -2,7 +2,7 @@
 
 App NodeJS per monitorare le prenotazioni dei pasti tramite il portale ITChefWeb di CAMST e notificare l'utente via telegram se non è stata effettuata la prenotazione.
 
-## Configuraizione
+## Configurazione
 
 L'app è configurabile tramite le seguenti variabili d'ambiente:
 
@@ -22,8 +22,6 @@ services:
     container_name: itchefweb-bot
     volumes:
       - ./database/:/app/database/  # mount per il database interno, obbigatorio
-    ports:
-      - "3000:3000"
     environment:
       - TELEGRAM_BOT_TOKEN=your_telegram_bot_token
       - CAMST_BASEURL=https://itchefwebcl.camst.it/XXXXXXXXXX/ITChefWebApp
