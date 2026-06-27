@@ -1,4 +1,4 @@
-import { Database, type User } from "./database.js";
+import { Database, type OffTime, type User } from "./database.js";
 import { environment } from "./environment.js";
 import { HttpClient } from "./HttpClient.js";
 import TelegramBot from "node-telegram-bot-api";
@@ -34,6 +34,23 @@ const commmands = {
         example:
             "/prenotazione N, dove N è il numero di giorni da oggi. '/prenotazione 0' controlla per oggi, '/prenotazione 1' controlla per domani, '/prenotazione 2' controlla per dopodomani, e così via.",
     },
+    FERIE: {
+        command: "/ferie",
+        description: "Mostra le ferie inserite per il tuo account.",
+        example:''
+    },
+    AGGIUNGI_FERIE: {
+        command: "/aggiungi_ferie",
+        description: "Aggiunge giorni di ferie al tuo account, in modo da non ricevere notifiche per quei giorni.",
+        example:
+            "/aggiungi_ferie GG1-MM1 GG2-MM2, dove GG1-MM1 rappresenta giorno e mese di inizio delle ferie, e GG2-MM2 rappresenta giorno e mese di fine delle ferie. '/aggiungi_ferie 01-01 05-01' aggiunge ferie dal 1 gennaio al 5 gennaio. Non riceverai notifiche per quei giorni (inclusi i giorni di inizio e fine). Se devi inserire solo un giorno, puoi omettere GG2-MM2, ad esempio '/aggiungi_ferie 01-01' aggiunge ferie solo per il 1 gennaio.",
+    },
+    RIMUOVI_FERIE: {
+        command: "/rimuovi_ferie",
+        description: "Rimuove giorni di ferie dal tuo account.",
+        example:
+            "/rimuovi_ferie GG1-MM1 GG2-MM2, dove GG1-MM1 rappresenta giorno e mese di inizio delle ferie, e GG2-MM2 rappresenta giorno e mese di fine delle ferie. '/rimuovi_ferie 01-01 05-01' rimuove le ferie dal 1 gennaio al 5 gennaio. Se devi rimuovere solo un giorno, puoi omettere GG2-MM2, ad esempio '/rimuovi_ferie 01-01' rimuove le ferie solo per il 1 gennaio.",
+    },
 };
 
 /** Bot di telegram */
@@ -68,6 +85,14 @@ cron.schedule(
         async function _iter() {
             const users = database.find<User>(Database.TABLES.USERS);
             for (const user of users || []) {
+
+                const offTimeDate = today.toFormat("yyyy-MM-dd");
+                const found = database.find(Database.TABLES.OFFTIMES, { userId: user.chatId, date: offTimeDate });
+                if (found && found.length > 0) {
+                    console.log(`Utente ${user.username} è in ferie per oggi (${offTimeDate}). Nessun messaggio inviato.`);
+                    continue;
+                }
+
                 console.log(`Controllo prenotazione per utente ${user.username} per oggi`);
                 const reservationResult = await checkReservation(user, 0);
                 if (!reservationResult.found) {
@@ -125,6 +150,16 @@ cron.schedule(
             const users = database.find<User>(Database.TABLES.USERS);
             console.log(`Trovati ${users?.length || 0} utenti registrati. Inizio controllo prenotazioni.`);
             for (const user of users || []) {
+
+                // Controlla che l'utente non abbia inserito delle ferie per il giorno da controllare. Se le ha inserite, salta il controllo per quel giorno.
+                const checkOffTimeDate = DateTime.local().plus({ days: plusDays }).toFormat("yyyy-MM-dd");
+                const found = database.find(Database.TABLES.OFFTIMES, { userId: user.chatId, date: checkOffTimeDate });
+                if (found && found.length > 0) {
+                    console.log(`Utente ${user.username} è in ferie per la data(${checkOffTimeDate}). Salto verifica per giorno successivo.`);
+                    continue;
+                }
+                
+                // L'utente dovrebbe esserci, fai il controllo
                 const reservationResult = await checkReservation(user, plusDays);
                 if (!reservationResult.found) {
                     console.log(`Nessuna prenotazione trovata per utente ${user.username} per ${plusDays} giorni dopo oggi. Invia messaggio.`);
@@ -231,88 +266,250 @@ function generateReservationMessage(reservationResult: {
     }
 }
 
+/**
+ * Register a user with the bot using the /registra command.
+ * @param chatId The chat ID of the user.
+ * @param text The text of the message containing the command and credentials.
+ * @returns {boolean} True if the registration command was processed, false otherwise.
+ */
+function register(chatId: number, text: string): boolean {
+    if (!text.startsWith(commmands.REGISTER.command)) return false;
+
+    console.log(`Tentativo di registrazione da chatId ${chatId}`);
+    const parts = text.split(" ");
+    if (parts.length !== 3) {
+        bot.sendMessage(chatId, `Formato del comando non valido. Usa: ${commmands.REGISTER.example}`);
+        return true;
+    }
+
+    // Crea un nuovo utente e salvalo nel database
+    const newUser: User = {
+        chatId: chatId,
+        username: parts[1]!,
+        password: parts[2]!,
+    };
+    database.create<User>(Database.TABLES.USERS, newUser);
+    bot.sendMessage(chatId, "Registrazione avvenuta con successo!");
+
+    return true;
+}
+
+/**
+ * Manages the /start command, sending a welcome message and listing available commands.
+ *
+ * @param chatId the chat ID of the user.
+ * @param text The test message
+ * @param user the user object containing user details.
+ * @returns false if the command is not /start, true otherwise.
+ */
+function start(chatId: number, text: string, user: User): boolean {
+    if (text !== commmands.START.command) return false;
+
+    console.log(`Utente ${user.username} ha avviato il bot.`);
+    const message = Object.values(commmands)
+        .map((cmd) => `${cmd.command}: ${cmd.description}${cmd.example ? `. Esempio: ${cmd.example}` : ""}`)
+        .join("\n\n");
+    bot.sendMessage(chatId, "Benvenuto! Questo bot contolla le prenotazioni dei pasti alla mensa Camst. Ecco i comandi disponibili:\n\n" + message);
+    return true;
+}
+
+/**
+ * Manages the case when a user is not registered, sending a message with instructions on how to register.
+ * @param chatId the chat ID of the user.
+ * @returns
+ */
+function registrationRequired(chatId: number) {
+    console.log(`Utente non registrato con chatId ${chatId}.`);
+    bot.sendMessage(
+        chatId,
+        `Utente non registrato. Per registrarti, invia il comando '${commmands.REGISTER.example}'. Le credenziali da utilizzare sono quelle dell'app ItChefWeb`,
+    );
+    return;
+}
+
+/**
+ * Checks if the message is a reservation command and processes it accordingly.
+ * @param chatId the chat ID of the user.
+ * @param text The text of the message containing the command.
+ * @param user the user object containing user details.
+ * @returns {boolean} True if the message was a reservation command and was processed, false otherwise.
+ */
+function reservationCommand(chatId: number, text: string, user: User): boolean {
+    // Gestisce il comando di controllo prenotazione
+    const isPrenotazioneOggiCommand = text === commmands.CHECK_PRENOTAZIONE_OGGI.command;
+    const isPrenotazioneDomaniCommand = text === commmands.CHECK_PRENOTAZIONE_DOMANI.command;
+    const isPrenotazioneCommand = text.startsWith(commmands.CHECK_PRENOTAZIONE.command + " ");
+    if (!(isPrenotazioneOggiCommand || isPrenotazioneDomaniCommand || isPrenotazioneCommand)) return false;
+
+    let dateParam = 0;
+    if (isPrenotazioneDomaniCommand) {
+        dateParam = nextWorkingDayDiff();
+    } else if (isPrenotazioneCommand) {
+        const parts = text.split(" ");
+        dateParam = parseInt(parts[1] ?? "", 10);
+        if (isNaN(dateParam)) {
+            bot.sendMessage(chatId, `Formato del comando non valido. Usa: ${commmands.CHECK_PRENOTAZIONE.example}`);
+            return true;
+        }
+    }
+
+    console.log(`Controllo prenotazione per utente ${user.username} con parametro: ${dateParam}`);
+
+    checkReservation(user, dateParam)
+        .then((reservationResult: any) => {
+            const message = generateReservationMessage(reservationResult);
+            bot.sendMessage(chatId, message);
+        })
+        .catch((err) => {
+            bot.sendMessage(chatId, `Errore durante il controllo della prenotazione: ${err.message}`);
+        });
+
+    return true;
+}
+
+/**
+ * Aggiunge ferie. 
+ * @param chatId 
+ * @param text 
+ * @param user 
+ * @returns {boolean} True se il comando è stato gestito, false altrimenti.
+ */
+function addOfftimeCommand(chatId: number, text: string, user: User): boolean {
+
+    const regex = new RegExp('^' + commmands.AGGIUNGI_FERIE.command + '\\s+(\\d{2})-(\\d{2})(\\s+(\\d{2})-(\\d{2})){0,1}$');
+    const match = regex.exec(text);
+    if (!match) return false;
+
+    let startDate = DateTime.local().set({ day: parseInt(match[1]!), month: parseInt(match[2]!) });
+    let endDate = startDate;
+    if (match[4] && match[5]) {
+        endDate = DateTime.local().set({ day: parseInt(match[4]!), month: parseInt(match[5]!) });
+        if (endDate < startDate) {
+            endDate = endDate.plus({ years: 1 }); // Se la data di fine è prima della data di inizio, si assume che sia nell'anno successivo (caso per dicembre-gennaio)
+        }
+    }
+
+    console.log(`Aggiunta ferie per utente ${user.username} dal ${startDate.toFormat("dd-MM")} al ${endDate.toFormat("dd-MM")}`);
+
+    // cicla su tutti i giorni e crea un record per ogni giorno. Se il record esiste già, skippa.
+    const diffDays = endDate.diff(startDate, "days").days + 1; // +1 per includere il giorno di inizio e fine
+    for (let i = 0; i < diffDays; i++) {
+        const offTimeDate = startDate.plus({ days: i }).toFormat("yyyy-MM-dd");
+        const found = database.find(Database.TABLES.OFFTIMES, { userId: user.chatId, date: offTimeDate });
+        if (!found || found.length === 0) {
+            database.create(Database.TABLES.OFFTIMES, { userId: user.chatId, date: offTimeDate });
+        }
+    }
+    bot.sendMessage(chatId, `Ferie aggiunte per il periodo ${startDate.toFormat("dd-MM")} - ${endDate.toFormat("dd-MM")}. Non riceverai notifiche per questi giorni.`);
+
+    return true;
+
+}
+
+/**
+ * rimuove ferie.
+ * @param chatId The chat ID of the user.
+ * @param text The text of the message containing the command.
+ * @param user The user object containing user details.
+ * @returns {boolean} True se il comando è stato gestito, false altrimenti.
+ */
+function removeOfftimeCommand(chatId: number, text: string, user: User): boolean {
+
+    const regex = new RegExp('^' + commmands.RIMUOVI_FERIE.command + '\\s+(\\d{2})-(\\d{2})(\\s+(\\d{2})-(\\d{2})){0,1}$');
+    const match = regex.exec(text);
+    if (!match) return false;
+
+    let startDate = DateTime.local().set({ day: parseInt(match[1]!), month: parseInt(match[2]!) });
+    let endDate = startDate;
+    if (match[4] && match[5]) {
+        endDate = DateTime.local().set({ day: parseInt(match[4]!), month: parseInt(match[5]!) });
+        if (endDate < startDate) {
+            endDate = endDate.plus({ years: 1 }); // Se la data di fine è prima della data di inizio, si assume che sia nell'anno successivo (caso per dicembre-gennaio)
+        }
+    }
+
+    console.log(`Rimozione ferie per utente ${user.username} dal ${startDate.toFormat("dd-MM")} al ${endDate.toFormat("dd-MM")}`);
+    const diffDays = endDate.diff(startDate, "days").days + 1; // +1 per includere il giorno di inizio e fine
+    for (let i = 0; i < diffDays; i++) {
+        const offTimeDate = startDate.plus({ days: i }).toFormat("yyyy-MM-dd");
+        const found = database.find(Database.TABLES.OFFTIMES, { userId: user.chatId, date: offTimeDate });
+        if (found && found.length > 0) {
+            database.delete(Database.TABLES.OFFTIMES, found[0]!);
+        }
+    }
+    bot.sendMessage(chatId, `Ferie rimosse per il periodo ${startDate.toFormat("dd-MM")} - ${endDate.toFormat("dd-MM")}. Il sistema tornerà a notificarti per questi giorni se necessario.`);
+
+    return true;
+
+}
+
+/**
+ * Ritorna la lista di giorni di ferie inseriti per l'utente. 
+ * @param chatId 
+ * @param text 
+ * @param user 
+ * @returns {boolean} True se il comando è stato gestito, false altrimenti.
+ */
+function getOfftimeCommand(chatId: number, text: string, user: User): boolean {
+
+    if (text !== commmands.FERIE.command) return false;
+
+    const offTimeDays = database.find<OffTime>(Database.TABLES.OFFTIMES, { userId: user.chatId});
+
+    if (!offTimeDays || offTimeDays.length === 0) {
+        bot.sendMessage(chatId, `Non hai giorni di ferie inseriti.`);
+        return true;
+    }
+
+    const offTimeDaysFormatted = offTimeDays.map((offtime) => {
+        const date = DateTime.fromISO(offtime.date);
+        return date.toFormat("dd-MM-yyyy");
+    });
+
+    bot.sendMessage(chatId, `I tuoi giorni di ferie sono:\n${offTimeDaysFormatted.join("\n")}`);
+    return true;
+}   
+
+
+
 // Listen for any kind of message. There are different kinds of messages.
 bot.on("message", (msg) => {
     const chatId = msg.chat.id;
     const text = msg.text || "";
-    // Verifica se è il messaggio di registrazione
-    if (text.startsWith(commmands.REGISTER.command)) {
-        console.log(`Tentativo di registrazione da chatId ${chatId}`);
-        const parts = text.split(" ");
-        if (parts.length !== 3) {
-            bot.sendMessage(chatId, `Formato del comando non valido. Usa: ${commmands.REGISTER.example}`);
-            return;
-        }
 
-        // Crea un nuovo utente e salvalo nel database
-        const newUser: User = {
-            chatId: chatId,
-            username: parts[1]!,
-            password: parts[2]!,
-        };
-        database.create<User>(Database.TABLES.USERS, newUser);
-        bot.sendMessage(chatId, "Registrazione avvenuta con successo!");
+    // Verifica ed esegui il messaggio di registrazione. Nel caso lo sia, non proseguire con gli altri comandi.
+    if (register(chatId, text)) {
         return;
     }
 
     // Da qui in poi si assume che l'utente sia già registrato
     const user: User | undefined = database.find<User>(Database.TABLES.USERS, { chatId: chatId })?.[0];
     if (!user) {
-        console.log(`Utente non registrato con chatId ${chatId}.`);
-        bot.sendMessage(
-            chatId,
-            `Utente non registrato. Per registrarti, invia il comando '${commmands.REGISTER.example}'. Le credenziali da utilizzare sono quelle dell'app ItChefWeb`,
-        );
+        return registrationRequired(chatId);
+    }
+
+    // Verifica ed esegui il messaggio di start. Nel caso lo sia, non proseguire con gli altri comandi.
+    if (start(chatId, text, user)) {
         return;
     }
 
-    // Gestisce il comando di start
-    if (text === commmands.START.command) {
-        console.log(`Utente ${user.username} ha avviato il bot.`);
-        const message = Object.values(commmands)
-            .map((cmd) => `${cmd.command}: ${cmd.description}${cmd.example ? ` (esempio: ${cmd.example})` : ""}`)
-            .join("\n\n");
-        bot.sendMessage(chatId, "Benvenuto! Questo bot contolla le prenotazioni dei pasti alla mensa Camst. Ecco i comandi disponibili:\n\n" + message);
+    // Gestisce il comando di controllo prenotazione. Nel caso lo sia, non proseguire con gli altri comandi.
+    if (reservationCommand(chatId, text, user)) {
         return;
     }
 
-    // Gestisce il comando di controllo prenotazione
-    const isPrenotazioneOggiCommand = text === commmands.CHECK_PRENOTAZIONE_OGGI.command;
-    const isPrenotazioneDomaniCommand = text === commmands.CHECK_PRENOTAZIONE_DOMANI.command;
-    const isPrenotazioneCommand = text.startsWith(commmands.CHECK_PRENOTAZIONE.command+' ');
-    if (isPrenotazioneOggiCommand || isPrenotazioneDomaniCommand || isPrenotazioneCommand) {
-        let dateParam = 0;
-        if (isPrenotazioneDomaniCommand) {
-            dateParam = nextWorkingDayDiff();
-        } else if (isPrenotazioneCommand) {
-            const parts = text.split(" ");
-            dateParam = parseInt(parts[1] ?? "", 10);
-            if (isNaN(dateParam)) {
-                bot.sendMessage(chatId, `Formato del comando non valido. Usa: ${commmands.CHECK_PRENOTAZIONE.example}`);
-                return;
-            }
-        }
-
-        console.log(`Controllo prenotazione per utente ${user.username} con parametro: ${dateParam}`);
-
-        checkReservation(user, dateParam)
-            .then((reservationResult: any) => {
-                const message = generateReservationMessage(reservationResult);
-                bot.sendMessage(chatId, message);
-            })
-            .catch((err) => {
-                bot.sendMessage(chatId, `Errore durante il controllo della prenotazione: ${err.message}`);
-            });
-
+    // Gestisce il comando di visualizzazione ferie. Nel caso lo sia, non proseguire con gli altri comandi.
+    if (getOfftimeCommand(chatId, text, user)) {
         return;
     }
 
-    // Gestisce il comando di start
-    if (text === commmands.START.command) {
-        const message = Object.values(commmands)
-            .map((cmd) => `${cmd.command}: ${cmd.description}${cmd.example ? ` (esempio: ${cmd.example})` : ""}`)
-            .join("\n\n");
-        bot.sendMessage(chatId, "Benvenuto! Questo bot contolla le prenotazioni dei pasti alla mensa Camst. Ecco i comandi disponibili:\n\n" + message);
+    // Gestisce il comando di aggiunta ferie. Nel caso lo sia, non proseguire con gli altri comandi.
+    if (addOfftimeCommand(chatId, text, user)) {
+        return;
+    }
+
+    // Gestisce il comando di rimozione ferie. Nel caso lo sia, non proseguire con gli altri comandi.
+    if (removeOfftimeCommand(chatId, text, user)) {
         return;
     }
 
