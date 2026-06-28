@@ -8,7 +8,8 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "build": "tsc",
-    "start": "tsc-watch -b ./tsconfig.json --onSuccess \"node dist/index.js\""
+    "start": "tsc-watch -b ./tsconfig.json --onSuccess \"node dist/index.js\"",
+    "build-docker":"bash build-docker.sh"
   },
   "dependencies": {
     "axios": "^1.18.0",

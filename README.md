@@ -14,10 +14,33 @@ La serie completa di comandi è ottenibile tramite il comando `/start` sul bot t
 
 L'app è configurabile tramite le seguenti variabili d'ambiente:
 
-- TELEGRAM_BOT_TOKEN: **obbligatorio** token per bot telegram. Devi generarne uno tramite il bot @BotFather su telegram
+- TELEGRAM_BOT_TOKEN: **obbligatorio** token per bot telegram. Devi generarne uno tramite il bot **@BotFather** su telegram
 - CRON: **opzionale** cron per il controllo giornaliero delle prenotazioni (default: 00 9 * * *)
 - CRON_TOMORROW: **opzionale** cron per il controllo delle prenotazioni per il giorno lavorativo successivo (default: 30 14 * * *)
 - CAMST_BASEURL: **obbligatorio** url base dell'applicazione Camst, ad esempio: https://itchefwebcl.camst.it/XXXXXX/ITChefWebApp. Puoi trovare questo url aprendo il portale Camst nel browser e copiando l'url fino a /ITChefWebApp
+
+## Avviare l'app in ambiente di sviluppo
+
+Crea il file `.env` nella root del progetto con le variabili d'ambiente necessarie, ad esempio:
+
+```env
+TELEGRAM_BOT_TOKEN=XXXXXXX:XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+CAMST_BASEURL=https://itchefwebcl.camst.it/XXXXXX/ITChefWebApp
+```
+
+Dopodichè esegui: 
+
+```bash
+npm install  # installa le dipendenze del progetto (da eseguire solo la prima volta)
+npm start # avvia l'app in modalità sviluppo
+```
+
+## Generazione immagine docker
+
+Esegui uno dei seguenti comandi per generare l'immagine docker:
+
+1. via npm script: `npm run build-docker`
+2. via bash script: `bash build-docker.sh`
 
 ## Avviare l'app con docker
 
