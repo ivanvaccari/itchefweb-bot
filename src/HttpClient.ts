@@ -31,8 +31,12 @@ export class HttpClient {
     
     /**
      * Esegue il login. Per qualsiasi problema, lancia un eccezione,
-     * altrimento ritorna senza errori.
+     * altrimenti ritorna senza errori.
      *
+     * @param email L'email dell'utente.
+     * @param password La password dell'utente.
+     * @throws Error se il login fallisce o se ci sono problemi nella pagina di login.
+     * @returns void
      */
     public async login(email: string, password: string) {
         const loginPage = await this.httpClient.get(`${environment.camstBaseUrl}/Account/Login`, {
@@ -43,22 +47,24 @@ export class HttpClient {
         const loginPageHtml = loginPage.data;
         const loginPageAST = this.buildHtmlAST(loginPageHtml);
 
-        // find the form element in the AST
+        // find the form element in the html AST
         const form = this.getElements(loginPageAST, "form");
         if (!form[0]) throw new Error("Elemento form non trovato nella pagina di login");
 
+        // Find the input elements for email and password in the form
         const inputPassword = this.getElements(form[0], "input", { type: "password", name: "inputPassword" });
         if (!inputPassword[0]) throw new Error("Elemento input password non trovato nel form");
-
         const inputEmail = this.getElements(form[0], "input", { type: "text", name: "inputEmail" });
         if (!inputEmail[0]) throw new Error("Elemento input email non trovato nel form");
 
+        // ASP.NET Web Forms uses hidden input fields to maintain state. We need to extract these values from the form and include them in our POST request.
         const __EVENTTARGET = this.getElements(form[0], "input", { type: "hidden", name: "__EVENTTARGET" })[0];
         const __EVENTARGUMENT = this.getElements(form[0], "input", { type: "hidden", name: "__EVENTARGUMENT" })[0];
         const __VIEWSTATE = this.getElements(form[0], "input", { type: "hidden", name: "__VIEWSTATE" })[0];
         const __VIEWSTATEGENERATOR = this.getElements(form[0], "input", { type: "hidden", name: "__VIEWSTATEGENERATOR" })[0];
         const __EVENTVALIDATION = this.getElements(form[0], "input", { type: "hidden", name: "__EVENTVALIDATION" })[0];
 
+        // Fake a browser POST request to the login endpoint with the extracted form data and user credentials.
         const formData = new URLSearchParams();
         formData.append("__EVENTTARGET", this.getNodeAttr(__EVENTTARGET, "value") ?? "");
         formData.append("__EVENTARGUMENT", this.getNodeAttr(__EVENTARGUMENT, "value") ?? "");
@@ -77,6 +83,7 @@ export class HttpClient {
             },
         });
 
+        // Check for login failure by looking for a specific message in the response data. If found, throw an error indicating that the login failed.
         if (loginResponse.data.includes(LOGIN_FAIL_MESSAGE)) {
             throw new Error("Login fallito: " + LOGIN_FAIL_MESSAGE);
         }
@@ -92,8 +99,9 @@ export class HttpClient {
     }
 
     /**
-     * Headers ultramegafake per chrome
-     * @returns
+     * Fakes headers that tell the remote server we're Chrome.
+     * 
+     * @returns An object containing the fake headers.
      */
     private fakeBrowserHeaders() {
         return {
@@ -117,9 +125,10 @@ export class HttpClient {
     }
 
     /**
-     * Genera un AST (Abstract Syntax Tree) a partire da un HTML
-     * @param html
-     * @returns
+     * Generates an AST (Abstract Syntax Tree) from the given HTML string.
+     * 
+     * @param html The HTML string to parse.
+     * @returns The generated AST.
      */
     private buildHtmlAST(html: string) {
         const document = parse(html);
@@ -127,9 +136,10 @@ export class HttpClient {
     }
 
     /**
-     *
-     * @param node
-     * @param attrName
+     * Finds an element by its tag name from the given node and its children.
+     * 
+     * @param node The node to search in.
+     * @param tagName The tag name of the element to find.
      * @returns
      */
     private getNodeAttr(node: ReturnType<typeof this.buildHtmlAST>, attrName: string): string | undefined {
@@ -140,6 +150,7 @@ export class HttpClient {
 
     /**
      * Gets an element by its tag name from the given node and its children.
+     * 
      * @param node The node to search in.
      * @param tagName The tag name of the element to find.
      * @returns The found element or null if not found.
@@ -177,9 +188,12 @@ export class HttpClient {
     }
 
     /**
-     * Prende l'id del cliente per la data specificata (quella in cui si vuole prenotare)
-     *
-     * @param date
+     * Get the customer id for the specified date (the one you want to book for).
+     * 
+     * @param date The date for which to get the customer id.
+     * @returns The customer id.
+     * @throws Error if no customer is found for the specified date.
+     * 
      */
     private async getClientId(date: Date): Promise<string> {
         /**
@@ -215,11 +229,12 @@ export class HttpClient {
     }
 
     /**
-     * Prende l'id della destinazione del cliente per la data specificata (quella in cui si vuole prenotare)
-     *
-     * @param date
-     * @param clientId
-     * @returns
+     * Get the destination id for the specified date and client id (the one you want to book for).
+     * 
+     * @param date The date for which to get the destination id.
+     * @param clientId The client id for which to get the destination id.
+     * @returns The destination id.
+     * @throws Error if no destination is found for the specified client and date.
      */
     private async getClientDestination(date: Date, clientId: string): Promise<string> {
         /**
@@ -257,11 +272,12 @@ export class HttpClient {
     }
 
     /**
-     * Ottiene l'id del servizio per la data specificata, il cliente e la destinazione
-     *
-     * @param date
-     * @param clientId
-     * @param destinationId
+     * Get the service id for the specified date, client, and destination.
+     * 
+     * @param date The date for which to get the service id.
+     * @param clientId The client id for which to get the service id.
+     * @param destinationId The destination id for which to get the service id.
+     * @throws Error if no service is found for the specified client and destination.
      * @returns
      */
     private async getServizi(date: Date, clientId: string, destinationId: string): Promise<string> {
@@ -295,26 +311,21 @@ export class HttpClient {
         return servizi[0].IdServizio!;
     }
     /**
-     * Precarica il dataset necessario per effettuare una prenotazione per la data specificata
-     *
-     * @param date
+     * PReloads the dataset necessary to make a reservation for the specified date.
+     * 
+     * @param date The date for which to preload the dataset.
      */
     private async preloadDatasetForDate(date: Date) {
         this.clientId = await this.getClientId(date);
         this.destinationId = await this.getClientDestination(date, this.clientId);
         this.serviceId = await this.getServizi(date, this.clientId, this.destinationId);
-
-        /*
-        console.log("Client ID:", this.clientId);
-        console.log("Destination ID:", this.destinationId);
-        console.log("Service ID:", this.serviceId);*/
     }
 
     /**
-     * Cerca la prenotazione per la data specificata. Se non è stata precaricata la dataset, lo fa automaticamente.
-     *
-     * @param date
-     * @returns
+     * Find the reservation for the specified date. If the dataset has not been preloaded, it does so automatically.
+     * 
+     * @param date The date for which to find the reservation.
+     * @returns An object containing the reservation status and details.
      */
     public async getReservation(date: Date): Promise<{ found: boolean; data: any, isReservationPossible?: boolean; message: string }> {
         if (!this.clientId || !this.destinationId || !this.serviceId) {
@@ -368,13 +379,14 @@ export class HttpClient {
     }
 
     /**
-     * Ottiene una dieta per la data specificata, il cliente, la destinazione e il servizio.
-     *
-     * @param date
-     * @param clientId
-     * @param destinationId
-     * @param serviceId
-     * @returns
+     * Find the diet for the specified date, client, destination and service.
+     * 
+     * @param date The date for which to get the diet.
+     * @param clientId The client id for which to get the diet.
+     * @param destinationId The destination id for which to get the diet.
+     * @param serviceId The service id for which to get the diet.
+     * @throws Error if no diet is found for the specified client, destination and service.
+     * @returns The id of the diet.
      */
     private async getDietId(date: Date): Promise<string> {
         /**
@@ -405,12 +417,14 @@ export class HttpClient {
     }
 
     /**
-     * Verifica se è possibile prenotare per la data specificata e la dieta specificata.
+     * Checks if a reservation is possible for the specified date and diet.
      * 
-     * @param date
-     * @param dietId
+     * @param date The date for which to check if a reservation is possible.
+     * @param dietId The diet id for which to check if a reservation is possible.
+     * @returns An object containing the result of the check, a message, and whether deletion is allowed.
      */
     private async isReservationPossible(date: Date, dietId: string): Promise<{ isPossible: boolean; message: string; allowDelete: boolean }> {
+   
         /**
          * POST ${environment.camstBaseUrl}/LocalServiceInterface.asmx/GetVerificaPrenotazionePossibile
 
