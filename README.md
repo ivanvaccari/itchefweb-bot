@@ -44,12 +44,13 @@ Esegui uno dei seguenti comandi per generare l'immagine docker:
 
 ## Avviare l'app con docker
 
+La lista di immagini disponibili è visibile su [https://hub.docker.com/repository/docker/ivaccari/itchefweb-bot/general](https://hub.docker.com/repository/docker/ivaccari/itchefweb-bot/general).
 Esempio di configuazione per docker-compose:
 
 ```bash
 services:
   itchefwebbot:
-    image: ivaccari/itchefweb-bot:latest
+    image: ivaccari/itchefweb-bot:1.0.5
     container_name: itchefweb-bot
     volumes:
       - ./database/:/app/database/  # mount per il database interno, obbigatorio
