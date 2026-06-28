@@ -1,10 +1,8 @@
 services:
   itchefwebbot:
-    image: ivaccari/itchefweb-bot:latest
+    image: ivaccari/itchefweb-bot:1.0.5
     container_name: itchefweb-bot
     volumes:
       - ./database/:/app/database/
-    ports:
-      - "3000:3000"
     env_file:
       - .env

@@ -53,7 +53,7 @@ services:
     image: ivaccari/itchefweb-bot:1.0.5
     container_name: itchefweb-bot
     volumes:
-      - ./database/:/app/database/  # mount per il database interno, obbigatorio
+      - ./database/:/app/database/  # mount per il database interno, obbligatorio
     environment:
       - TELEGRAM_BOT_TOKEN=your_telegram_bot_token
       - CAMST_BASEURL=https://itchefwebcl.camst.it/XXXXXXXXXX/ITChefWebApp
