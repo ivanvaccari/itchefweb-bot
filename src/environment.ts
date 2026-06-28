@@ -1,5 +1,8 @@
 import "dotenv/config";
 
+/**
+ * Internal object that reflects values loaded from the .env file, with added defaults.
+ */
 export const environment = {
     /**
      * Token di telegram, da generare tramite BotFather

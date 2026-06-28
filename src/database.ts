@@ -1,17 +1,36 @@
 import fs from "fs";
 import path from "path";
 
+/**
+ * User record type.
+ */
 export type User = {
+    /** Telegram chat ID of the user */
     chatId: number;
+    /** Username of the user (for the ITChefweb app) */
     username: string;
+    /** Password of the user (for the ITChefweb app) */
     password: string;
 };
 
+/**
+ * Off-time record type.
+ * Represent a user's off-time with a userId and a date (single day off).
+ */
 export type OffTime = {
+    /** Id of the user */
     userId: number;
+    /** Date of the off-time */
     date: string;
 };
 
+
+/**
+ * This class represents a simple in-memory database that can be persisted to a JSON file. It provides very basic methods to manage data.
+ * 
+ * Cons: very simple, no complex queries, no relations, no indexing, no transactions, no concurrency control, no data validation, no data integrity checks, no data encryption.
+ * Pros: no external dependencies, easy to use, easy to understand, easy to extend, easy to test, easy to debug, easy to maintain.
+ */
 export class Database {
     static TABLES = {
         USERS: "users",
@@ -23,10 +42,11 @@ export class Database {
         offtimes: OffTime[];
     } = { users: [], offtimes: [] };
 
+    /** Timer for debouncing the save operation */
     private saveTimeout: NodeJS.Timeout | null = null;
 
     /**
-     * Caica il db dalla cartella ./database/database.json. Se non esiste, crea la cartella e il file
+     * Loads the database from the ./database/database.json file. If the file does not exist, it creates the directory and the file with default data.
      */
     public load() {
         const dbDir = path.join(process.cwd(), "database");
@@ -44,9 +64,9 @@ export class Database {
     }
 
     /**
-     * Crea un nuovo record nella tabella specificata e salva il db
-     * @param table
-     * @param record
+     * Create a new record in the specified table and save the database.
+     * @param table The table in which to create the record.
+     * @param record The record to create.
      */
     public create<T>(table: keyof Database["data"], record: T) {
         (this.data[table] as T[]).push(record);
@@ -54,10 +74,11 @@ export class Database {
     }
 
     /**
-     * Cerca i record nella tabella specificata che corrispondono al match fornito. Se non viene fornito alcun match, restituisce tutti i record della tabella.
-     * @param table
-     * @param match
-     * @returns
+     * Find records in the specified table that match the provided match object. If no match is provided, it returns all records in the table.
+     * 
+     * @param table The table in which to search for records.
+     * @param match The match object containing the fields to match for filtering.
+     * @returns An array of matching records or undefined if no records are found.
      */
     public find<T>(table: keyof Database["data"], match?: Partial<T>): T[] | undefined {
         const items = this.data[table] as T[];
@@ -79,6 +100,7 @@ export class Database {
         if (immediate) {
             _write();
         } else {
+            // In case of "Not immediate", debounce the file write to avoid multiple writes in a short time.
             if (this.saveTimeout) {
                 clearTimeout(this.saveTimeout);
             }
@@ -90,18 +112,24 @@ export class Database {
     }
 
     /**
-     * Update an item by id in the specified table with the provided update object. If the item is found, it merges the existing item with the update and saves the database.
+     * Update one or more items in the specified table with the provided update object.
+     * It merges the existing matching items with the updated data and saves the database.
      *
      * @param table The table in which to update the item.
-     * @param id The id of the item to update.
+     * @param match The match object containing the fields to match for updating.
      * @param update The update object containing the fields to update.
      * @returns {boolean} true if the item was found and updated, false otherwise.
      */
-    public updateById<T>(table: keyof Database["data"], id: string, update: Partial<T>): boolean {
+    public update<T>(table: keyof Database["data"], match: Partial<T>, update: Partial<T>): boolean {
+        let hasChanges = false
         const items = this.data[table] as T[];
-        const index = items.findIndex((item) => (item as any).id === id);
-        if (index !== -1) {
-            items[index] = { ...items[index], ...update } as T;
+        items.forEach((item, index) => {
+            if (this.objectMatches(item, match)) {
+                items[index] = { ...item, ...update } as T;
+                hasChanges = true;
+            }
+        });
+        if (hasChanges) {
             this.save();
             return true;
         }

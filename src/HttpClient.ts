@@ -1,13 +1,16 @@
 import axios, { type AxiosInstance } from "axios";
 import { environment } from "./environment.js";
-import { parse, type TreeAdapterTypeMap } from "parse5";
+import { parse } from "parse5";
 import { wrapper } from "axios-cookiejar-support";
 import { CookieJar } from "tough-cookie";
 
 // Se la pagina di ha questo messaggio allora le credenziali sono errate
 const LOGIN_FAIL_MESSAGE = "Nome utente o password errati!";
 
-
+/**
+ * Http scraper for the ITChefWeb application.
+ * It provides methods to log in, retrieve reservations, and check if reservations are possible for specific dates.
+ */
 export class HttpClient {
     private httpClient: AxiosInstance;
 

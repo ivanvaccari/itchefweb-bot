@@ -9,7 +9,7 @@ import cron from "node-cron";
 const database = new Database();
 database.load();
 
-// Cache per clients HTTP, con scadenza di 10 minuti, per poter riusare le sessioni di login senza dover effettuare il login ad ogni richiesta
+/** Cache per clients HTTP, con scadenza di 10 minuti, per poter riusare le sessioni di login senza dover effettuare il login ad ogni richiesta */
 const httpClientsCache: { [key: number]: { expiresAt: Date; client: HttpClient } } = {};
 
 /**
@@ -56,7 +56,7 @@ const commmands = {
 /** Bot di telegram */
 const bot = new TelegramBot(environment.telegramBotToken, {
     polling: {
-        interval: 2000,
+        interval: 1000, // After a long poll request, wait 1 second before sending the next one
         autoStart: true,
         params: {
             timeout: 30, // Timeout in seconds for long polling
@@ -113,7 +113,8 @@ cron.schedule(
 
 /**
  * Ritorna il numero di giorni da oggi al prossimo giorno lavorativo, saltando i weekend.
- * @returns
+ * 
+ * @returns Il numero di giorni fino al prossimo giorno lavorativo.
  */
 function nextWorkingDayDiff() {
     // predi il giorno lavorativo successivo, saltando i weekend
@@ -129,6 +130,7 @@ function nextWorkingDayDiff() {
 
     return plusDays;
 }
+
 /**
  * Ogni giorno controlla che ci sia la prenotazione per il giorno successivo (possibile fino entro le 13:30)
  */
@@ -180,7 +182,7 @@ cron.schedule(
 /**
  * Restituisce un HttpClient per un dato chatId, riutilizzando quello in cache se ancora valido, altrimenti ne crea uno nuovo.
  *
- * @param id
+ * @param id the chat ID of the user for which to get the HttpClient. Clients are cached for reuse for 10 minutes.
  * @returns
  */
 function getHttpClientForChatId(id: number): HttpClient {
@@ -201,9 +203,9 @@ function getHttpClientForChatId(id: number): HttpClient {
 /**
  * Verifica la prenotazione per un utente e una data specifica.
  *
- * @param user
- * @param param
- * @returns
+ * @param user L'utente per cui verificare la prenotazione.
+ * @param param Il numero di giorni da oggi per cui verificare la prenotazione (0 = oggi, 1 = domani, ecc.)
+ * @returns Un oggetto contenente il risultato della verifica della prenotazione.
  */
 async function checkReservation(
     user: User,
@@ -268,6 +270,7 @@ function generateReservationMessage(reservationResult: {
 
 /**
  * Register a user with the bot using the /registra command.
+ * 
  * @param chatId The chat ID of the user.
  * @param text The text of the message containing the command and credentials.
  * @returns {boolean} True if the registration command was processed, false otherwise.
@@ -315,6 +318,7 @@ function start(chatId: number, text: string, user: User): boolean {
 
 /**
  * Manages the case when a user is not registered, sending a message with instructions on how to register.
+ * 
  * @param chatId the chat ID of the user.
  * @returns
  */
@@ -329,6 +333,7 @@ function registrationRequired(chatId: number) {
 
 /**
  * Checks if the message is a reservation command and processes it accordingly.
+ * 
  * @param chatId the chat ID of the user.
  * @param text The text of the message containing the command.
  * @param user the user object containing user details.
@@ -368,18 +373,21 @@ function reservationCommand(chatId: number, text: string, user: User): boolean {
 }
 
 /**
- * Aggiunge ferie. 
- * @param chatId 
- * @param text 
- * @param user 
+ * Aggiunge uno o piu giorni di ferie.
+ * 
+ * @param chatId The chat ID of the user.
+ * @param text The text of the message containing the command.
+ * @param user The user object containing user details.
  * @returns {boolean} True se il comando è stato gestito, false altrimenti.
  */
 function addOfftimeCommand(chatId: number, text: string, user: User): boolean {
 
+    // Extrapolating the command and the dates from the text using regex
     const regex = new RegExp('^' + commmands.AGGIUNGI_FERIE.command + '\\s+(\\d{2})-(\\d{2})(\\s+(\\d{2})-(\\d{2})){0,1}$');
     const match = regex.exec(text);
-    if (!match) return false;
+    if (!match) return false; // not a match for the add off-time command
 
+    // Parse dates. If no end date is provided, use the start date as the end date (shortcut for adding a single day)
     let startDate = DateTime.local().set({ day: parseInt(match[1]!), month: parseInt(match[2]!) });
     let endDate = startDate;
     if (match[4] && match[5]) {
@@ -391,7 +399,7 @@ function addOfftimeCommand(chatId: number, text: string, user: User): boolean {
 
     console.log(`Aggiunta ferie per utente ${user.username} dal ${startDate.toFormat("dd-MM")} al ${endDate.toFormat("dd-MM")}`);
 
-    // cicla su tutti i giorni e crea un record per ogni giorno. Se il record esiste già, skippa.
+    // Iterate on all days and create a record for each day. If the record already exists, skip it.
     const diffDays = endDate.diff(startDate, "days").days + 1; // +1 per includere il giorno di inizio e fine
     for (let i = 0; i < diffDays; i++) {
         const offTimeDate = startDate.plus({ days: i }).toFormat("yyyy-MM-dd");
@@ -407,7 +415,8 @@ function addOfftimeCommand(chatId: number, text: string, user: User): boolean {
 }
 
 /**
- * rimuove ferie.
+ * Rimuove uno o piu giorni di ferie.
+ * 
  * @param chatId The chat ID of the user.
  * @param text The text of the message containing the command.
  * @param user The user object containing user details.
@@ -445,13 +454,15 @@ function removeOfftimeCommand(chatId: number, text: string, user: User): boolean
 
 /**
  * Ritorna la lista di giorni di ferie inseriti per l'utente. 
- * @param chatId 
- * @param text 
- * @param user 
+ * @param chatId The chat ID of the user.
+ * @param text The text of the message containing the command. 
+ * @param user The user object containing user details. 
+ * 
  * @returns {boolean} True se il comando è stato gestito, false altrimenti.
  */
 function getOfftimeCommand(chatId: number, text: string, user: User): boolean {
 
+    // If this is not a /ferie command, return false and skip the rest of the function
     if (text !== commmands.FERIE.command) return false;
 
     const offTimeDays = database.find<OffTime>(Database.TABLES.OFFTIMES, { userId: user.chatId});
